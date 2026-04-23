@@ -4,8 +4,10 @@ import tkinter as tk
 class StatusWindow:
     STATES = {
         "IDLE":      ("#3fb950", "Ready"),
+        "LISTENING": ("#22d3ee", "Listening..."),
         "THINKING":  ("#d2a8ff", "Thinking..."),
         "EXECUTING": ("#58a6ff", "Executing..."),
+        "SPEAKING":  ("#fb923c", "Speaking..."),
         "ERROR":     ("#f85149", "Error"),
     }
 
@@ -13,7 +15,7 @@ class StatusWindow:
         self.on_close = on_close
         self.root = tk.Tk()
         self.root.title("Hermes")
-        self.root.geometry("260x90+40+40")
+        self.root.geometry("320x170+40+40")
         self.root.configure(bg="#0f1419")
         self.root.attributes("-topmost", True)
         self.root.resizable(False, False)
@@ -23,21 +25,49 @@ class StatusWindow:
             self.root, width=24, height=24,
             bg="#0f1419", highlightthickness=0,
         )
-        self.canvas.place(x=20, y=33)
+        self.canvas.place(x=20, y=20)
         self.dot = self.canvas.create_oval(4, 4, 20, 20, fill="#3fb950", outline="")
 
         tk.Label(
             self.root, text="Hermes AI",
             font=("Segoe UI", 13, "bold"),
             bg="#0f1419", fg="#e6edf3",
-        ).place(x=56, y=18)
+        ).place(x=56, y=8)
 
         self.status_label = tk.Label(
             self.root, text="Ready",
             font=("Segoe UI", 10),
             bg="#0f1419", fg="#7d8590",
         )
-        self.status_label.place(x=56, y=44)
+        self.status_label.place(x=56, y=30)
+
+        tk.Frame(self.root, height=1, bg="#21262d").place(x=12, y=64, width=296)
+
+        tk.Label(
+            self.root, text="Heard:",
+            font=("Segoe UI", 8, "bold"),
+            bg="#0f1419", fg="#7d8590",
+        ).place(x=14, y=74)
+        self.transcript_label = tk.Label(
+            self.root, text="—",
+            font=("Segoe UI", 9),
+            bg="#0f1419", fg="#e6edf3",
+            wraplength=290, justify="left", anchor="w",
+        )
+        self.transcript_label.place(x=14, y=88, width=292, height=32)
+
+        tk.Label(
+            self.root, text="Reply:",
+            font=("Segoe UI", 8, "bold"),
+            bg="#0f1419", fg="#7d8590",
+        ).place(x=14, y=124)
+        self.reply_label = tk.Label(
+            self.root, text="—",
+            font=("Segoe UI", 9),
+            bg="#0f1419", fg="#e6edf3",
+            wraplength=290, justify="left", anchor="w",
+        )
+        self.reply_label.place(x=14, y=138, width=292, height=28)
 
         self._state = "IDLE"
         self._tick = 0
@@ -55,7 +85,7 @@ class StatusWindow:
         self.status_label.config(text=text)
 
     def _animate(self):
-        if self._state in ("THINKING", "EXECUTING"):
+        if self._state in ("THINKING", "EXECUTING", "LISTENING", "SPEAKING"):
             self._tick = (self._tick + 1) % 40
             phase = abs(self._tick - 20) / 20
             inset = 2.5 * phase
@@ -74,3 +104,9 @@ class StatusWindow:
 
     def run(self):
         self.root.mainloop()
+
+    def set_transcript(self, text: str):
+        self.root.after(0, lambda: self.transcript_label.config(text=text or "—"))
+
+    def set_reply(self, text: str):
+        self.root.after(0, lambda: self.reply_label.config(text=text or "—"))
