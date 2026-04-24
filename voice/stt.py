@@ -3,8 +3,8 @@ from faster_whisper import WhisperModel
 
 
 class WhisperSTT:
-    def __init__(self, model_size: str = "medium", device: str = "auto"):
-        self.model = WhisperModel(model_size, device=device, compute_type="auto")
+    def __init__(self, model_size: str = "medium", device: str = "cpu"):
+        self.model = WhisperModel(model_size, device=device, compute_type="int8")
 
     def transcribe(self, audio: np.ndarray) -> tuple[str, str]:
         if audio.size == 0:

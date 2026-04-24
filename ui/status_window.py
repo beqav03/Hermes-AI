@@ -72,6 +72,7 @@ class StatusWindow:
         self._state = "IDLE"
         self._tick = 0
         self._animate()
+        self.root.withdraw()
 
     def set(self, state: str):
         self.root.after(0, self._apply, state)
@@ -110,3 +111,28 @@ class StatusWindow:
 
     def set_reply(self, text: str):
         self.root.after(0, lambda: self.reply_label.config(text=text or "—"))
+
+    def show_centered(self):
+        self.root.after(0, self._do_show)
+
+    def _do_show(self):
+        self.root.update_idletasks()
+        w = self.root.winfo_width()
+        h = self.root.winfo_height()
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+        self.root.geometry(f"+{x}+{y}")
+        self.root.deiconify()
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+
+    def hide(self):
+        self.root.after(0, self.root.withdraw)
+
+    def reset(self):
+        self.root.after(0, lambda: (
+            self.transcript_label.config(text="—"),
+            self.reply_label.config(text="—"),
+        ))

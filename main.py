@@ -1,19 +1,18 @@
-import queue
 import threading
+import time
 
 from brain.ollama_client import OllamaBrain
 from core.registry import SkillRegistry
 from core.router import Router
 from skills import files
 from ui.status_window import StatusWindow
-from voice.hotkey import Hotkey
 from voice.recorder import VADRecorder
 from voice.stt import WhisperSTT
 from voice.tts import EdgeTTS
+from voice.wake_word import WakeWordListener
 
-
-HOTKEY = "ctrl+alt+h"
 WHISPER_MODEL = "medium"
+HIDE_DELAY_S = 1.2
 
 
 def setup_router(status_cb) -> Router:
@@ -30,76 +29,75 @@ def setup_router(status_cb) -> Router:
     return Router(registry, brain, status_cb=status_cb)
 
 
-def voice_worker(router, status, recorder, stt, tts, trigger_q, stop_event):
-    while not stop_event.is_set():
+class HermesApp:
+    def __init__(self):
+        self.stop_event = threading.Event()
+        self.status = StatusWindow(on_close=self.stop_event.set)
+        self.router = setup_router(self.status.set)
+
+        print(f"Loading Whisper '{WHISPER_MODEL}'...")
+        self.recorder = VADRecorder(aggressiveness=3)
+        self.stt = WhisperSTT(model_size=WHISPER_MODEL)
+        self.tts = EdgeTTS()
+
+        self.wake = WakeWordListener(
+            recorder=self.recorder,
+            stt=self.stt,
+            on_wake=self._on_wake,
+        )
+
+    def _on_wake(self, initial_command: str, lang: str):
+        self.status.reset()
+        self.status.show_centered()
+
         try:
-            trigger_q.get(timeout=0.5)
-        except queue.Empty:
-            continue
-
-        while not trigger_q.empty():
-            try:
-                trigger_q.get_nowait()
-            except queue.Empty:
-                break
-
-        try:
-            status.set("LISTENING")
-            audio = recorder.record()
-
-            if audio.size == 0:
-                status.set("IDLE")
-                continue
-
-            status.set("THINKING")
-            text, lang = stt.transcribe(audio)
-            status.set_transcript(text)
-            print(f"[{lang}] {text}")
-
-            if not text.strip():
-                status.set("IDLE")
-                continue
-
-            reply = router.handle(text)
-            status.set_reply(reply)
-            print(f"→ {reply}")
-
-            status.set("SPEAKING")
-            tts.speak(reply, lang=lang)
-            status.set("IDLE")
+            if initial_command:
+                self._process(initial_command, lang)
+            else:
+                self.status.set("LISTENING")
+                audio = self.recorder.record()
+                if audio.size == 0:
+                    self._finish()
+                    return
+                text, lang2 = self.stt.transcribe(audio)
+                self._process(text, lang2)
         except Exception as e:
-            print(f"Voice pipeline error: {e}")
-            status.set("ERROR")
+            print(f"Pipeline error: {e}")
+            self.status.set("ERROR")
+            time.sleep(HIDE_DELAY_S)
+            self.status.hide()
 
+    def _process(self, text: str, lang: str):
+        self.status.set_transcript(text)
+        print(f"[{lang}] {text}")
 
-def main():
-    stop_event = threading.Event()
-    status = StatusWindow(on_close=stop_event.set)
-    router = setup_router(status.set)
+        if not text.strip():
+            self._finish()
+            return
 
-    print(f"Loading Whisper '{WHISPER_MODEL}' (first run downloads ~1.5 GB)...")
-    recorder = VADRecorder()
-    stt = WhisperSTT(model_size=WHISPER_MODEL)
-    tts = EdgeTTS()
+        self.status.set("THINKING")
+        reply = self.router.handle(text)
+        self.status.set_reply(reply)
+        print(f"→ {reply}")
 
-    trigger_q = queue.Queue()
-    hotkey = Hotkey(HOTKEY, lambda: trigger_q.put(True))
-    hotkey.start()
+        self.status.set("SPEAKING")
+        self.tts.speak(reply, lang=lang)
+        self._finish()
 
-    print(f"Hermes ready. Press {HOTKEY.upper()} and speak.\n")
+    def _finish(self):
+        self.status.set("IDLE")
+        time.sleep(HIDE_DELAY_S)
+        self.status.hide()
 
-    threading.Thread(
-        target=voice_worker,
-        args=(router, status, recorder, stt, tts, trigger_q, stop_event),
-        daemon=True,
-    ).start()
-
-    try:
-        status.run()
-    finally:
-        stop_event.set()
-        hotkey.stop()
+    def run(self):
+        self.wake.start()
+        print('Hermes is listening. Say "Hermes" followed by your command.\n')
+        try:
+            self.status.run()
+        finally:
+            self.stop_event.set()
+            self.wake.stop()
 
 
 if __name__ == "__main__":
-    main()
+    HermesApp().run()
