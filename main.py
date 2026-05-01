@@ -1,32 +1,166 @@
 import gc
 import threading
 import time
-import psutil, os
 
 from brain.ollama_client import OllamaBrain
 from config.settings import HIDE_DELAY_S, OLLAMA_MODEL, WHISPER_MODEL
 from core.registry import SkillRegistry
 from core.router import Router
-from skills import files
+from skills import files, browser, apps, media, window, system, screen
 from ui.status_window import StatusWindow
 from voice.recorder import VADRecorder
 from voice.stt import WhisperSTT
 from voice.tts import EdgeTTS
 from voice.wake_word import WakeWordListener
 
-used = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
-print(f"[RAM] Hermes using {used:.2f} GB")
 
 def setup_router(status_cb) -> Router:
     registry = SkillRegistry()
-    registry.register(
-        name="open_folder",
-        handler=files.open_folder,
-        description="Open a folder in Windows File Explorer",
-        params={
-            "path": "string — one of: downloads, documents, desktop, pictures, music, videos — or a full path"
-        },
-    )
+
+    registry.register("open_folder",       files.open_folder,
+        "Open a folder in File Explorer",
+        {"path": "string — downloads, documents, desktop, pictures, music, videos or full path"})
+
+    registry.register("open_browser",      browser.open_browser,
+        "Open a web browser",
+        {"browser": "string — chrome, firefox, edge"})
+
+    registry.register("open_url",          browser.open_url,
+        "Open a specific URL or website",
+        {"url": "string — full URL or domain", "browser": "string — chrome, firefox, edge"})
+
+    registry.register("search_google",     browser.search_google,
+        "Search something on Google",
+        {"query": "string — the search query"})
+
+    registry.register("search_youtube",    browser.search_youtube,
+        "Search something on YouTube",
+        {"query": "string — the search query"})
+
+    registry.register("close_browser",     browser.close_browser,
+        "Close a browser or all browsers",
+        {"browser": "string — chrome, firefox, edge, or 'all'"})
+
+    registry.register("open_app",          apps.open_app,
+        "Open any application by name",
+        {"name": "string — app name e.g. notepad, spotify, discord, vscode, word, excel"})
+
+    registry.register("close_app",         apps.close_app,
+        "Close any running application by name",
+        {"name": "string — app name"})
+
+    registry.register("play_pause",        media.play_pause,
+        "Play or pause currently playing media",
+        {})
+
+    registry.register("next_track",        media.next_track,
+        "Skip to next track",
+        {})
+
+    registry.register("previous_track",    media.previous_track,
+        "Go to previous track",
+        {})
+
+    registry.register("stop_media",        media.stop_media,
+        "Stop playing media",
+        {})
+
+    registry.register("volume_up",         media.volume_up,
+        "Increase system volume",
+        {"amount": "integer — percent to raise, default 10"})
+
+    registry.register("volume_down",       media.volume_down,
+        "Decrease system volume",
+        {"amount": "integer — percent to lower, default 10"})
+
+    registry.register("set_volume",        media.set_volume,
+        "Set volume to a specific level",
+        {"level": "integer — 0 to 100"})
+
+    registry.register("mute",              media.mute,
+        "Mute system audio",
+        {})
+
+    registry.register("unmute",            media.unmute,
+        "Unmute system audio",
+        {})
+
+    registry.register("minimize_window",   window.minimize_window,
+        "Minimize a window by its title",
+        {"name": "string — partial window title"})
+
+    registry.register("maximize_window",   window.maximize_window,
+        "Maximize a window by its title",
+        {"name": "string — partial window title"})
+
+    registry.register("close_window",      window.close_window,
+        "Close a window by its title",
+        {"name": "string — partial window title"})
+
+    registry.register("focus_window",      window.focus_window,
+        "Bring a window to foreground by its title",
+        {"name": "string — partial window title"})
+
+    registry.register("list_windows",      window.list_windows,
+        "List all open windows",
+        {})
+
+    registry.register("minimize_all",      window.minimize_all,
+        "Minimize all windows and show the desktop",
+        {})
+
+    registry.register("switch_window",     window.switch_window,
+        "Switch to the next window (Alt+Tab)",
+        {})
+
+    registry.register("lock_screen",       system.lock_screen,
+        "Lock the Windows screen",
+        {})
+
+    registry.register("shutdown",          system.shutdown,
+        "Shut down the computer",
+        {"delay": "integer — seconds before shutdown, default 0"})
+
+    registry.register("restart",           system.restart,
+        "Restart the computer",
+        {"delay": "integer — seconds before restart, default 0"})
+
+    registry.register("sleep",             system.sleep,
+        "Put the computer to sleep",
+        {})
+
+    registry.register("take_screenshot",   system.take_screenshot,
+        "Take a screenshot and save to Pictures folder",
+        {"filename": "string — filename without extension, default 'screenshot'"})
+
+    registry.register("press_keys",        system.press_keys,
+        "Press a keyboard shortcut or key e.g. ctrl+c, enter, escape, win+d",
+        {"keys": "string — key combination using + separator"})
+
+    registry.register("type_text",         system.type_text,
+        "Type text as if using the keyboard",
+        {"text": "string — text to type"})
+
+    registry.register("copy",              system.copy,
+        "Copy selected content (Ctrl+C)",
+        {})
+
+    registry.register("paste",             system.paste,
+        "Paste from clipboard (Ctrl+V)",
+        {})
+
+    registry.register("undo",              system.undo,
+        "Undo last action (Ctrl+Z)",
+        {})
+
+    registry.register("click_text",        screen.click_text,
+        "Find text on screen using OCR and click it",
+        {"text": "string — visible text to click"})
+
+    registry.register("scroll",            screen.scroll,
+        "Scroll the current window up or down",
+        {"direction": "string — up or down", "amount": "integer — number of scroll steps, default 3"})
+
     brain = OllamaBrain()
     return Router(registry, brain, status_cb=status_cb)
 
@@ -57,7 +191,11 @@ class HermesApp:
                 self._process(initial_command, lang)
             else:
                 self.status.set("SPEAKING")
-                greeting = "Yes, how can I help you?" if lang == "en" else "დიახ, როგორ შემიძლია დაგეხმაროთ?"
+                greeting = (
+                    "Yes, how can I help you?"
+                    if lang == "en"
+                    else "დიახ, როგორ შემიძლია დაგეხმაროთ?"
+                )
                 self.tts.speak(greeting, lang=lang)
                 self.status.set("LISTENING")
                 audio = self.recorder.record()
