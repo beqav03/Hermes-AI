@@ -16,6 +16,7 @@ class WakeWordListener:
         self.stt = stt
         self.on_wake = on_wake
         self._stop = threading.Event()
+        self._busy = threading.Lock()
         self._thread = None
 
     def start(self):
@@ -31,12 +32,28 @@ class WakeWordListener:
                 audio = self.recorder.record()
                 if audio.size == 0:
                     continue
+
+                if self._busy.locked():
+                    continue
+
                 text, lang = self.stt.transcribe(audio)
                 command = self._extract_command(text)
                 if command is not None:
-                    self.on_wake(command, lang)
+                    threading.Thread(
+                        target=self._dispatch,
+                        args=(command, lang),
+                        daemon=True,
+                    ).start()
             except Exception as e:
                 print(f"Wake listener error: {e}")
+
+    def _dispatch(self, command: str, lang: str):
+        if not self._busy.acquire(blocking=False):
+            return
+        try:
+            self.on_wake(command, lang)
+        finally:
+            self._busy.release()
 
     def _extract_command(self, text: str):
         if not text:

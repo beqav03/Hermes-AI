@@ -1,7 +1,10 @@
+import gc
 import threading
 import time
+import psutil, os
 
 from brain.ollama_client import OllamaBrain
+from config.settings import HIDE_DELAY_S, OLLAMA_MODEL, WHISPER_MODEL
 from core.registry import SkillRegistry
 from core.router import Router
 from skills import files
@@ -11,9 +14,8 @@ from voice.stt import WhisperSTT
 from voice.tts import EdgeTTS
 from voice.wake_word import WakeWordListener
 
-WHISPER_MODEL = "medium"
-HIDE_DELAY_S = 1.2
-
+used = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+print(f"[RAM] Hermes using {used:.2f} GB")
 
 def setup_router(status_cb) -> Router:
     registry = SkillRegistry()
@@ -25,7 +27,7 @@ def setup_router(status_cb) -> Router:
             "path": "string — one of: downloads, documents, desktop, pictures, music, videos — or a full path"
         },
     )
-    brain = OllamaBrain(model="qwen2.5:7b-instruct")
+    brain = OllamaBrain()
     return Router(registry, brain, status_cb=status_cb)
 
 
@@ -35,9 +37,9 @@ class HermesApp:
         self.status = StatusWindow(on_close=self.stop_event.set)
         self.router = setup_router(self.status.set)
 
-        print(f"Loading Whisper '{WHISPER_MODEL}'...")
-        self.recorder = VADRecorder(aggressiveness=3)
-        self.stt = WhisperSTT(model_size=WHISPER_MODEL)
+        print(f"[Init] Whisper: {WHISPER_MODEL}  LLM: {OLLAMA_MODEL}")
+        self.recorder = VADRecorder()
+        self.stt = WhisperSTT()
         self.tts = EdgeTTS()
 
         self.wake = WakeWordListener(
@@ -66,6 +68,8 @@ class HermesApp:
             self.status.set("ERROR")
             time.sleep(HIDE_DELAY_S)
             self.status.hide()
+        finally:
+            gc.collect()
 
     def _process(self, text: str, lang: str):
         self.status.set_transcript(text)
@@ -97,6 +101,8 @@ class HermesApp:
         finally:
             self.stop_event.set()
             self.wake.stop()
+            self.stt.unload()
+            gc.collect()
 
 
 if __name__ == "__main__":
