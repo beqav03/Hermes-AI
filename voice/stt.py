@@ -1,10 +1,16 @@
 import gc
-
+import os
 import numpy as np
-from faster_whisper import WhisperModel
+import numpy as np
 
+from faster_whisper import WhisperModel
+from faster_whisper import WhisperModel
+from config.settings import WHISPER_COMPUTE, WHISPER_DEVICE, WHISPER_MODEL
 from config.settings import WHISPER_COMPUTE, WHISPER_DEVICE, WHISPER_MODEL
 
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
 class WhisperSTT:
     def __init__(self):
@@ -19,6 +25,7 @@ class WhisperSTT:
                 compute_type=WHISPER_COMPUTE,
                 num_workers=1,
                 cpu_threads=4,
+                device_index=0,
             )
 
     def transcribe(self, audio: np.ndarray) -> tuple[str, str]:

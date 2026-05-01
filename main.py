@@ -56,6 +56,9 @@ class HermesApp:
             if initial_command:
                 self._process(initial_command, lang)
             else:
+                self.status.set("SPEAKING")
+                greeting = "Yes, how can I help you?" if lang == "en" else "დიახ, როგორ შემიძლია დაგეხმაროთ?"
+                self.tts.speak(greeting, lang=lang)
                 self.status.set("LISTENING")
                 audio = self.recorder.record()
                 if audio.size == 0:
